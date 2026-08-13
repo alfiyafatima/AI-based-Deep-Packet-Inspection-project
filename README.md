@@ -1123,3 +1123,10 @@ The key insight is that even when payloads are completely encrypted, packet size
 If you have questions about any part of this project, the code is well-commented and follows the same flow described in this document. Start with the simple version (`main_working.cpp`) to understand the concepts, then move to the multi-threaded version (`dpi_mt.cpp` / `main_dpi.cpp`) to see how parallelism and ML classification are added.
 
 Happy learning! 🚀
+
+---
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).
+
