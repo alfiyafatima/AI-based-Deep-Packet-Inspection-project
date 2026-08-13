@@ -2,6 +2,7 @@
 #include <iostream>
 #include <sstream>
 #include <iomanip>
+#include <algorithm>
 
 namespace DPI {
 
@@ -115,29 +116,39 @@ void FastPathProcessor::inspectPayload(PacketJob& job, Connection* conn) {
     const uint8_t* payload = job.data.data() + job.payload_offset;
     
     // Try TLS SNI extraction first (most common for HTTPS)
-    if (tryExtractSNI(job, conn)) {
-        return;
-    }
+    bool extracted = tryExtractSNI(job, conn);
     
     // Try HTTP Host header extraction
-    if (tryExtractHTTPHost(job, conn)) {
-        return;
+    if (!extracted && tryExtractHTTPHost(job, conn)) {
+        extracted = true;
     }
     
     // Check for DNS (port 53)
-    if (job.tuple.dst_port == 53 || job.tuple.src_port == 53) {
+    if (!extracted && (job.tuple.dst_port == 53 || job.tuple.src_port == 53)) {
         auto domain = DNSExtractor::extractQuery(payload, job.payload_length);
         if (domain) {
             conn_tracker_.classifyConnection(conn, AppType::DNS, *domain);
-            return;
+            extracted = true;
         }
     }
     
     // Basic port-based classification as fallback
-    if (job.tuple.dst_port == 80) {
-        conn_tracker_.classifyConnection(conn, AppType::HTTP, "");
-    } else if (job.tuple.dst_port == 443) {
-        conn_tracker_.classifyConnection(conn, AppType::HTTPS, "");
+    if (!extracted) {
+        if (job.tuple.dst_port == 80) {
+            conn_tracker_.classifyConnection(conn, AppType::HTTP, "");
+        } else if (job.tuple.dst_port == 443) {
+            conn_tracker_.classifyConnection(conn, AppType::HTTPS, "");
+        }
+    }
+
+    // ML-based Encrypted Traffic Classification
+    if (conn->predicted_category == TrafficCategory::UNKNOWN && conn->packet_sizes.size() >= 3) {
+        FlowFeatures features = conn->computeFeatures();
+        TrafficCategory category = ml_classifier_.predict(features);
+        if (category != TrafficCategory::UNKNOWN) {
+            conn->predicted_category = category;
+            ml_classifications_++;
+        }
     }
 }
 
@@ -209,7 +220,8 @@ PacketAction FastPathProcessor::checkRules(const PacketJob& job, Connection* con
         src_ip,
         job.tuple.dst_port,
         conn->app_type,
-        conn->sni
+        conn->sni,
+        conn->predicted_category
     );
     
     if (block_reason) {
@@ -223,6 +235,9 @@ PacketAction FastPathProcessor::checkRules(const PacketJob& job, Connection* con
                 break;
             case RuleManager::BlockReason::APP:
                 ss << "App " << block_reason->detail;
+                break;
+            case RuleManager::BlockReason::CATEGORY:
+                ss << "Category " << block_reason->detail;
                 break;
             case RuleManager::BlockReason::DOMAIN:
                 ss << "Domain " << block_reason->detail;
@@ -284,6 +299,7 @@ FastPathProcessor::FPStats FastPathProcessor::getStats() const {
     stats.connections_tracked = conn_tracker_.getActiveCount();
     stats.sni_extractions = sni_extractions_.load();
     stats.classification_hits = classification_hits_.load();
+    stats.ml_classifications = ml_classifications_.load();
     return stats;
 }
 

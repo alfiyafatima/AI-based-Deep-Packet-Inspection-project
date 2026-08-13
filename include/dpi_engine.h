@@ -97,6 +97,14 @@ public:
     // Unblock an application
     void unblockApp(AppType app);
     void unblockApp(const std::string& app_name);
+
+    // Block a traffic category
+    void blockCategory(TrafficCategory category);
+    void blockCategory(const std::string& category_name);
+
+    // Unblock a traffic category
+    void unblockCategory(TrafficCategory category);
+    void unblockCategory(const std::string& category_name);
     
     // Block a domain
     void blockDomain(const std::string& domain);

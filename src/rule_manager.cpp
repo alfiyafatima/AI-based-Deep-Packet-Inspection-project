@@ -99,6 +99,33 @@ std::vector<AppType> RuleManager::getBlockedApps() const {
 }
 
 // ============================================================================
+// Traffic Category Blocking
+// ============================================================================
+
+void RuleManager::blockCategory(TrafficCategory category) {
+    std::unique_lock<std::shared_mutex> lock(category_mutex_);
+    blocked_categories_.insert(category);
+    std::cout << "[RuleManager] Blocked category: " << categoryToString(category) << std::endl;
+}
+
+void RuleManager::unblockCategory(TrafficCategory category) {
+    std::unique_lock<std::shared_mutex> lock(category_mutex_);
+    blocked_categories_.erase(category);
+    std::cout << "[RuleManager] Unblocked category: " << categoryToString(category) << std::endl;
+}
+
+bool RuleManager::isCategoryBlocked(TrafficCategory category) const {
+    if (category == TrafficCategory::UNKNOWN) return false;
+    std::shared_lock<std::shared_mutex> lock(category_mutex_);
+    return blocked_categories_.count(category) > 0;
+}
+
+std::vector<TrafficCategory> RuleManager::getBlockedCategories() const {
+    std::shared_lock<std::shared_mutex> lock(category_mutex_);
+    return std::vector<TrafficCategory>(blocked_categories_.begin(), blocked_categories_.end());
+}
+
+// ============================================================================
 // Domain Blocking
 // ============================================================================
 
@@ -210,7 +237,8 @@ std::optional<RuleManager::BlockReason> RuleManager::shouldBlock(
     uint32_t src_ip,
     uint16_t dst_port,
     AppType app,
-    const std::string& domain) const {
+    const std::string& domain,
+    TrafficCategory category) const {
     
     // Check IP first (most specific)
     if (isIPBlocked(src_ip)) {
@@ -225,6 +253,11 @@ std::optional<RuleManager::BlockReason> RuleManager::shouldBlock(
     // Check app
     if (isAppBlocked(app)) {
         return BlockReason{BlockReason::APP, appTypeToString(app)};
+    }
+
+    // Check traffic category
+    if (isCategoryBlocked(category)) {
+        return BlockReason{BlockReason::CATEGORY, categoryToString(category)};
     }
     
     // Check domain
@@ -255,6 +288,12 @@ bool RuleManager::saveRules(const std::string& filename) const {
     file << "\n[BLOCKED_APPS]\n";
     for (const auto& app : getBlockedApps()) {
         file << appTypeToString(app) << "\n";
+    }
+
+    // Save blocked categories
+    file << "\n[BLOCKED_CATEGORIES]\n";
+    for (const auto& cat : getBlockedCategories()) {
+        file << categoryToString(cat) << "\n";
     }
     
     // Save blocked domains
@@ -307,6 +346,11 @@ bool RuleManager::loadRules(const std::string& filename) {
                     break;
                 }
             }
+        } else if (current_section == "[BLOCKED_CATEGORIES]") {
+            TrafficCategory cat = stringToCategory(line);
+            if (cat != TrafficCategory::UNKNOWN) {
+                blockCategory(cat);
+            }
         } else if (current_section == "[BLOCKED_DOMAINS]") {
             blockDomain(line);
         } else if (current_section == "[BLOCKED_PORTS]") {
@@ -327,6 +371,10 @@ void RuleManager::clearAll() {
     {
         std::unique_lock<std::shared_mutex> lock(app_mutex_);
         blocked_apps_.clear();
+    }
+    {
+        std::unique_lock<std::shared_mutex> lock(category_mutex_);
+        blocked_categories_.clear();
     }
     {
         std::unique_lock<std::shared_mutex> lock(domain_mutex_);
@@ -350,6 +398,10 @@ RuleManager::RuleStats RuleManager::getStats() const {
     {
         std::shared_lock<std::shared_mutex> lock(app_mutex_);
         stats.blocked_apps = blocked_apps_.size();
+    }
+    {
+        std::shared_lock<std::shared_mutex> lock(category_mutex_);
+        stats.blocked_categories = blocked_categories_.size();
     }
     {
         std::shared_lock<std::shared_mutex> lock(domain_mutex_);

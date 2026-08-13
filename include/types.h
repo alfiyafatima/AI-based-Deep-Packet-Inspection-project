@@ -9,6 +9,8 @@
 #include <atomic>
 #include <optional>
 
+#include "flow_features.h"
+
 namespace DPI {
 
 // ============================================================================
@@ -114,12 +116,16 @@ struct Connection {
     FiveTuple tuple;
     ConnectionState state = ConnectionState::NEW;
     AppType app_type = AppType::UNKNOWN;
+    TrafficCategory predicted_category = TrafficCategory::UNKNOWN;
     std::string sni;  // Server Name Indication (if detected)
     
     uint64_t packets_in = 0;
     uint64_t packets_out = 0;
     uint64_t bytes_in = 0;
     uint64_t bytes_out = 0;
+
+    std::vector<size_t> packet_sizes;
+    std::vector<std::chrono::steady_clock::time_point> packet_times;
     
     std::chrono::steady_clock::time_point first_seen;
     std::chrono::steady_clock::time_point last_seen;
@@ -130,6 +136,10 @@ struct Connection {
     bool syn_seen = false;
     bool syn_ack_seen = false;
     bool fin_seen = false;
+
+    FlowFeatures computeFeatures() const {
+        return FlowFeatures::extract(packet_sizes, packet_times, bytes_in, bytes_out);
+    }
 };
 
 // ============================================================================

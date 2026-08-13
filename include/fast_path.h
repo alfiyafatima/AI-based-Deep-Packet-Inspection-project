@@ -6,6 +6,7 @@
 #include "connection_tracker.h"
 #include "rule_manager.h"
 #include "sni_extractor.h"
+#include "ml_classifier.h"
 #include <thread>
 #include <atomic>
 #include <memory>
@@ -64,6 +65,7 @@ public:
         uint64_t connections_tracked;
         uint64_t sni_extractions;
         uint64_t classification_hits;
+        uint64_t ml_classifications;
     };
     
     FPStats getStats() const;
@@ -88,6 +90,9 @@ private:
     
     // Output callback
     PacketOutputCallback output_callback_;
+
+    // ML Classifier for encrypted traffic
+    MLClassifier ml_classifier_;
     
     // Statistics
     std::atomic<uint64_t> packets_processed_{0};
@@ -95,6 +100,7 @@ private:
     std::atomic<uint64_t> packets_dropped_{0};
     std::atomic<uint64_t> sni_extractions_{0};
     std::atomic<uint64_t> classification_hits_{0};
+    std::atomic<uint64_t> ml_classifications_{0};
     
     // Thread control
     std::atomic<bool> running_{false};

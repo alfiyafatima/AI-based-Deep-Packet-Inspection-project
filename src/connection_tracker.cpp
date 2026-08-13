@@ -58,6 +58,11 @@ void ConnectionTracker::updateConnection(Connection* conn, size_t packet_size, b
     if (!conn) return;
     
     conn->last_seen = std::chrono::steady_clock::now();
+
+    if (conn->packet_sizes.size() < 20) {
+        conn->packet_sizes.push_back(packet_size);
+        conn->packet_times.push_back(conn->last_seen);
+    }
     
     if (is_outbound) {
         conn->packets_out++;

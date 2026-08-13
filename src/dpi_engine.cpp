@@ -266,11 +266,11 @@ PacketJob DPIEngine::createPacketJob(const PacketAnalyzer::RawPacket& raw,
         job.transport_offset = 14 + ip_header_len;
         
         // Transport header length
-        if (parsed.has_tcp && job.data.size() > job.transport_offset) {
+        if (parsed.has_tcp && job.data.size() >= job.transport_offset + 13) {
             uint8_t tcp_data_offset = (job.data[job.transport_offset + 12] >> 4) & 0x0F;
             size_t tcp_header_len = tcp_data_offset * 4;
             job.payload_offset = job.transport_offset + tcp_header_len;
-        } else if (parsed.has_udp) {
+        } else if (parsed.has_udp && job.data.size() >= job.transport_offset + 8) {
             job.payload_offset = job.transport_offset + 8;  // UDP header is 8 bytes
         }
         
@@ -372,6 +372,34 @@ void DPIEngine::unblockApp(const std::string& app_name) {
             unblockApp(static_cast<AppType>(i));
             return;
         }
+    }
+}
+
+void DPIEngine::blockCategory(TrafficCategory category) {
+    if (rule_manager_) {
+        rule_manager_->blockCategory(category);
+    }
+}
+
+void DPIEngine::blockCategory(const std::string& category_name) {
+    TrafficCategory cat = stringToCategory(category_name);
+    if (cat != TrafficCategory::UNKNOWN) {
+        blockCategory(cat);
+    } else {
+        std::cerr << "[DPIEngine] Unknown traffic category: " << category_name << "\n";
+    }
+}
+
+void DPIEngine::unblockCategory(TrafficCategory category) {
+    if (rule_manager_) {
+        rule_manager_->unblockCategory(category);
+    }
+}
+
+void DPIEngine::unblockCategory(const std::string& category_name) {
+    TrafficCategory cat = stringToCategory(category_name);
+    if (cat != TrafficCategory::UNKNOWN) {
+        unblockCategory(cat);
     }
 }
 

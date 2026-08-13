@@ -1,0 +1,52 @@
+# Compiled Binaries & Executables
+dpi_engine
+dpi_engine.exe
+packet_analyzer
+packet_analyzer.exe
+*.exe
+*.o
+*.obj
+*.so
+*.dylib
+*.dll
+
+# Build Directories
+build/
+bin/
+out/
+install/
+
+# CMake Generated Build Artifacts
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+CMakeSettings.json
+compile_commands.json
+
+# IDE & Editor Cache
+.vs/
+.vscode/
+.idea/
+*.sln
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+
+# Python Cache & Virtual Envs
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+*.egg-info/
+venv/
+env/
+.venv/
+
+# Dynamically Generated Output PCAP Files & ONNX Models
+output.pcap
+output*.pcap
+result*.pcap
+filtered*.pcap
+*.onnx

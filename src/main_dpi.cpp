@@ -22,6 +22,7 @@ Arguments:
 Options:
   --block-ip <ip>        Block packets from source IP
   --block-app <app>      Block application (e.g., YouTube, Facebook)
+  --block-category <cat> Block ML traffic category (e.g., VIDEO_STREAMING, VOIP_CALL, FILE_TRANSFER, WEB_BROWSING)
   --block-domain <dom>   Block domain (supports wildcards: *.facebook.com)
   --rules <file>         Load blocking rules from file
   --lbs <n>              Number of load balancer threads (default: 2)
@@ -31,12 +32,16 @@ Options:
 Examples:
   )" << program << R"( capture.pcap filtered.pcap
   )" << program << R"( capture.pcap filtered.pcap --block-app YouTube
+  )" << program << R"( capture.pcap filtered.pcap --block-category VIDEO_STREAMING
   )" << program << R"( capture.pcap filtered.pcap --block-ip 192.168.1.50 --block-domain *.tiktok.com
   )" << program << R"( capture.pcap filtered.pcap --rules blocking_rules.txt
 
 Supported Apps for Blocking:
   Google, YouTube, Facebook, Instagram, Twitter/X, Netflix, Amazon,
   Microsoft, Apple, WhatsApp, Telegram, TikTok, Spotify, Zoom, Discord, GitHub
+
+Supported ML Traffic Categories for Blocking:
+  WEB_BROWSING, VIDEO_STREAMING, VOIP_CALL, FILE_TRANSFER
 
 Architecture:
   ┌─────────────┐
@@ -88,6 +93,7 @@ int main(int argc, char* argv[]) {
     
     std::vector<std::string> block_ips;
     std::vector<std::string> block_apps;
+    std::vector<std::string> block_categories;
     std::vector<std::string> block_domains;
     std::string rules_file;
     
@@ -98,6 +104,8 @@ int main(int argc, char* argv[]) {
             block_ips.push_back(argv[++i]);
         } else if (arg == "--block-app" && i + 1 < argc) {
             block_apps.push_back(argv[++i]);
+        } else if (arg == "--block-category" && i + 1 < argc) {
+            block_categories.push_back(argv[++i]);
         } else if (arg == "--block-domain" && i + 1 < argc) {
             block_domains.push_back(argv[++i]);
         } else if (arg == "--rules" && i + 1 < argc) {
@@ -135,6 +143,10 @@ int main(int argc, char* argv[]) {
     
     for (const auto& app : block_apps) {
         engine.blockApp(app);
+    }
+    
+    for (const auto& cat : block_categories) {
+        engine.blockCategory(cat);
     }
     
     for (const auto& domain : block_domains) {

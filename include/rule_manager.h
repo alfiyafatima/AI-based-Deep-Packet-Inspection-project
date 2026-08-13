@@ -60,6 +60,20 @@ public:
     // Get list of blocked apps
     std::vector<AppType> getBlockedApps() const;
     
+    // ========== Traffic Category Blocking ==========
+    
+    // Block a specific traffic category (e.g. VIDEO_STREAMING, VOIP_CALL)
+    void blockCategory(TrafficCategory category);
+    
+    // Unblock a traffic category
+    void unblockCategory(TrafficCategory category);
+    
+    // Check if category is blocked
+    bool isCategoryBlocked(TrafficCategory category) const;
+    
+    // Get list of blocked categories
+    std::vector<TrafficCategory> getBlockedCategories() const;
+    
     // ========== Domain Blocking ==========
     
     // Block a specific domain (or pattern)
@@ -91,7 +105,7 @@ public:
     // Check if a packet/connection should be blocked based on all rules
     // Returns the reason if blocked, nullopt if allowed
     struct BlockReason {
-        enum Type { IP, APP, DOMAIN, PORT } type;
+        enum Type { IP, APP, DOMAIN, PORT, CATEGORY } type;
         std::string detail;
     };
     
@@ -99,7 +113,8 @@ public:
         uint32_t src_ip,
         uint16_t dst_port,
         AppType app,
-        const std::string& domain) const;
+        const std::string& domain,
+        TrafficCategory category = TrafficCategory::UNKNOWN) const;
     
     // ========== Rule Persistence ==========
     
@@ -119,6 +134,7 @@ public:
         size_t blocked_apps;
         size_t blocked_domains;
         size_t blocked_ports;
+        size_t blocked_categories;
     };
     
     RuleStats getStats() const;
@@ -130,6 +146,9 @@ private:
     
     mutable std::shared_mutex app_mutex_;
     std::unordered_set<AppType> blocked_apps_;
+    
+    mutable std::shared_mutex category_mutex_;
+    std::unordered_set<TrafficCategory> blocked_categories_;
     
     mutable std::shared_mutex domain_mutex_;
     std::unordered_set<std::string> blocked_domains_;

@@ -1,5 +1,8 @@
 # DPI Engine - Deep Packet Inspection System
 
+> **Acknowledgments & Baseline**
+> This repository is built upon and inspired by the open-source C++ Packet-Analyzer baseline by [Alfiya Fatima](https://github.com/alfiyafatima/Packet-Analyzer). 
+> Extended, refactored, and maintained by adding AI/ML Encrypted Traffic Classification, vector bounds safety fixes, and thread-affinity data plane updates.
 
 This document explains **everything** about this project - from basic networking concepts to the complete code architecture. After reading this, you should understand exactly how packets flow through the system without needing to read the code.
 
@@ -18,6 +21,7 @@ This document explains **everything** about this project - from basic networking
 9. [How Blocking Works](#9-how-blocking-works)
 10. [Building and Running](#10-building-and-running)
 11. [Understanding the Output](#11-understanding-the-output)
+12. [AI & Machine Learning Encrypted Traffic Classification](#12-ai--machine-learning-encrypted-traffic-classification)
 
 ---
 
@@ -151,11 +155,13 @@ packet_analyzer/
 │   ├── pcap_reader.h          # PCAP file reading
 │   ├── packet_parser.h        # Network protocol parsing
 │   ├── sni_extractor.h        # TLS/HTTP inspection
-│   ├── types.h                # Data structures (FiveTuple, AppType, etc.)
-│   ├── rule_manager.h         # Blocking rules (multi-threaded version)
-│   ├── connection_tracker.h   # Flow tracking (multi-threaded version)
-│   ├── load_balancer.h        # LB thread (multi-threaded version)
-│   ├── fast_path.h            # FP thread (multi-threaded version)
+│   ├── flow_features.h        # ★ ML Feature Extractor & TrafficCategory ★
+│   ├── ml_classifier.h        # ★ ML Inference & Decision Tree Fallback ★
+│   ├── types.h                # Data structures (FiveTuple, Connection, etc.)
+│   ├── rule_manager.h         # Blocking rules (App, IP, Domain, Category)
+│   ├── connection_tracker.h   # Flow tracking
+│   ├── load_balancer.h        # LB thread
+│   ├── fast_path.h            # FP thread & DPI / ML classification
 │   ├── thread_safe_queue.h    # Thread-safe queue
 │   └── dpi_engine.h           # Main orchestrator
 │
@@ -163,11 +169,15 @@ packet_analyzer/
 │   ├── pcap_reader.cpp        # PCAP file handling
 │   ├── packet_parser.cpp      # Protocol parsing
 │   ├── sni_extractor.cpp      # SNI/Host extraction
+│   ├── flow_features.cpp      # Feature extraction logic
+│   ├── ml_classifier.cpp      # ONNX Runtime & fallback decision tree
 │   ├── types.cpp              # Helper functions
-│   ├── main_working.cpp       # ★ SIMPLE VERSION ★
-│   ├── dpi_mt.cpp             # ★ MULTI-THREADED VERSION ★
+│   ├── main_dpi.cpp           # ★ CLI ENTRY POINT WITH ML BLOCKING ★
+│   ├── dpi_mt.cpp             # ★ MULTI-THREADED ENGINE ★
 │   └── [other files]          # Supporting code
 │
+├── train_model.py             # ★ ML Dataset Generator & Model Trainer ★
+├── traffic_model.onnx         # ONNX Model weights file
 ├── generate_test_pcap.py      # Creates test data
 ├── test_dpi.pcap              # Sample capture with various traffic
 └── README.md                  # This file!
@@ -882,14 +892,21 @@ g++ -std=c++17 -O2 -I include -o dpi_simple \
     src/types.cpp
 ```
 
-**Multi-threaded Version:**
+**Multi-threaded Engine with AI Classification:**
 ```bash
 g++ -std=c++17 -pthread -O2 -I include -o dpi_engine \
-    src/dpi_mt.cpp \
+    src/main_dpi.cpp \
     src/pcap_reader.cpp \
     src/packet_parser.cpp \
     src/sni_extractor.cpp \
-    src/types.cpp
+    src/types.cpp \
+    src/rule_manager.cpp \
+    src/connection_tracker.cpp \
+    src/fast_path.cpp \
+    src/load_balancer.cpp \
+    src/dpi_engine.cpp \
+    src/flow_features.cpp \
+    src/ml_classifier.cpp
 ```
 
 ### Running
@@ -1032,22 +1049,77 @@ python3 generate_test_pcap.py
 
 ---
 
+## 12. AI & Machine Learning Encrypted Traffic Classification
+
+When TLS SNI inspection fails or when dealing with fully encrypted protocols (e.g. Encrypted SNI / ECH, VPNs, custom encrypted tunnels), traditional DPI inspection cannot read plain domain names.
+
+This project includes an **AI & Machine Learning Traffic Classifier** written in C++17 that inspects statistical flow metrics to classify and block encrypted traffic patterns.
+
+### How It Works
+
+```
+Raw Packets → [Connection Tracker] → [FlowFeatures Extractor] → [ML Inference Engine]
+                                                                        ↓
+                                                                - WEB_BROWSING
+                                                                - VIDEO_STREAMING
+                                                                - VOIP_CALL
+                                                                - FILE_TRANSFER
+```
+
+### 1. Statistical Flow Metrics Extracted (`FlowFeatures`)
+The engine tracks the first 5 to 10 packets of every connection to derive 10 statistical flow features:
+- `mean_packet_size`: Average size of payload/frame bytes
+- `stddev_packet_size`: Standard deviation of packet sizes
+- `mean_iat_ms`: Inter-packet Arrival Time mean in milliseconds
+- `stddev_iat_ms`: Standard deviation of inter-packet arrival times
+- `bytes_ratio`: Ratio of Inbound vs Outbound total bytes
+- `pkt_len_1` .. `pkt_len_5`: Payload sizes of the first 5 packets
+
+### 2. Dual-Mode Inference Engine (`MLClassifier`)
+- **ONNX Runtime Support**: Loads `traffic_model.onnx` directly for native machine learning tensor inference.
+- **Decision Tree Fallback Evaluator**: Embedded Random Forest decision-tree evaluator providing instant classification without external DLL dependencies.
+
+### 3. Model Training Pipeline (`train_model.py`)
+To train a custom machine learning model for traffic classification:
+
+```bash
+# Install training dependencies
+pip install scikit-learn numpy skl2onnx
+
+# Train Random Forest classifier and export ONNX model
+python train_model.py
+```
+
+### 4. Category-Based Rule Blocking
+Block entire categories of encrypted traffic via the `--block-category` CLI option:
+
+```bash
+# Block video streaming traffic (e.g., YouTube, Netflix encrypted flows)
+./dpi_engine test_dpi.pcap output.pcap --block-category VIDEO_STREAMING
+
+# Block VoIP calls or file transfers
+./dpi_engine test_dpi.pcap output.pcap --block-category VOIP_CALL
+```
+
+---
+
 ## Summary
 
 This DPI engine demonstrates:
 
 1. **Network Protocol Parsing** - Understanding packet structure
-2. **Deep Packet Inspection** - Looking inside encrypted connections
-3. **Flow Tracking** - Managing stateful connections
-4. **Multi-threaded Architecture** - Scaling with thread pools
-5. **Producer-Consumer Pattern** - Thread-safe queues
+2. **Deep Packet Inspection** - Looking inside encrypted connections via TLS SNI
+3. **AI & Machine Learning Classification** - Identifying encrypted traffic categories via statistical flow metrics
+4. **Flow Tracking** - Managing stateful connection tables
+5. **Multi-threaded Architecture** - Scaling with parallel load balancer and fast-path thread pools
+6. **Producer-Consumer Pattern** - High-throughput thread-safe queues
 
-The key insight is that even HTTPS traffic leaks the destination domain in the TLS handshake, allowing network operators to identify and control application usage.
+The key insight is that even when payloads are completely encrypted, packet size distributions and inter-arrival timing patterns reveal the underlying traffic type, allowing intelligent network control.
 
 ---
 
 ## Questions?
 
-If you have questions about any part of this project, the code is well-commented and follows the same flow described in this document. Start with the simple version (`main_working.cpp`) to understand the concepts, then move to the multi-threaded version (`dpi_mt.cpp`) to see how parallelism is added.
+If you have questions about any part of this project, the code is well-commented and follows the same flow described in this document. Start with the simple version (`main_working.cpp`) to understand the concepts, then move to the multi-threaded version (`dpi_mt.cpp` / `main_dpi.cpp`) to see how parallelism and ML classification are added.
 
 Happy learning! 🚀

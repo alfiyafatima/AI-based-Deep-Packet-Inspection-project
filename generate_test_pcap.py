@@ -254,13 +254,37 @@ def main():
         writer.write_packet(eth + ip + tcp)
         
         seq_base += 1000
-    
+
+    # Add Encrypted Multi-Packet Flows without SNI to test AI/ML Traffic Classification
+    # 1. Encrypted Video Stream Flow (Large bursts ~1350 bytes)
+    video_ip = '198.51.100.42'
+    src_port_v = 51200
+    for pkt_idx in range(6):
+        eth = create_ethernet_header(user_mac, gateway_mac)
+        payload = bytes([random.randint(0, 255) for _ in range(1350)])
+        tcp = create_tcp_header(src_port_v, 443, seq_base + pkt_idx * 1400, 1, 0x18)
+        ip = create_ip_header(user_ip, video_ip, 6, len(tcp) + len(payload))
+        writer.write_packet(eth + ip + tcp + payload)
+    seq_base += 10000
+
+    # 2. Encrypted VoIP Flow (Small audio packets ~160 bytes)
+    voip_ip = '198.51.100.88'
+    src_port_voip = 51300
+    for pkt_idx in range(6):
+        eth = create_ethernet_header(user_mac, gateway_mac)
+        payload = bytes([random.randint(0, 255) for _ in range(160)])
+        udp = create_udp_header(src_port_voip, 5004, len(payload))
+        ip = create_ip_header(user_ip, voip_ip, 17, len(udp) + len(payload))
+        writer.write_packet(eth + ip + udp + payload)
+    seq_base += 10000
+
     writer.close()
     print(f"Created test_dpi.pcap with test traffic")
     print(f"  - {len(tls_connections)} TLS connections with SNI")
     print(f"  - {len(http_connections)} HTTP connections")
     print(f"  - {len(dns_queries)} DNS queries")
     print(f"  - 5 packets from blocked IP {blocked_source_ip}")
+    print(f"  - Multi-packet Encrypted Video Stream & VoIP flows for ML Classification")
 
 
 if __name__ == '__main__':
